@@ -1,0 +1,20 @@
+{
+  "name": "retech-shop",
+  "version": "1.0.0",
+  "description": "Website bán đồ điện tử cũ",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^10.5.0"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}
