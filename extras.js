@@ -1,4 +1,5 @@
 // Các tính năng bổ sung: chính sách, ký gửi, mã giảm giá, danh mục, quên mật khẩu, SEO, cài đặt mở rộng.
+const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -130,6 +131,41 @@ module.exports = function extras(ctx) {
     const r = await mailer.simple(to, 'Email thử từ ' + getSettings().name, publicSettings(), 'Email hoạt động', 'Nếu bạn đọc được thư này thì cấu hình email đã đúng.');
     if (!r.ok) return fail(res, 400, 'Gửi thất bại: ' + r.error);
     res.json({ ok: true, to });
+  }));
+
+  // ---------- Admin: sao lưu / khôi phục toàn bộ dữ liệu (kể cả ảnh sản phẩm) ----------
+  admin.get('/backup', ah((req, res) => {
+    const tmp = path.join(os.tmpdir(), `retech-backup-${Date.now()}.db`);
+    db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
+    const stamp = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 16).replace(/[-:T]/g, '');
+    res.download(tmp, `retech-backup-${stamp}.db`, () => fs.rm(tmp, () => {}));
+  }));
+  admin.post('/restore', require('express').raw({ type: '*/*', limit: '300mb' }), ah((req, res) => {
+    const buf = req.body;
+    if (!Buffer.isBuffer(buf) || buf.length < 100 || buf.slice(0, 15).toString() !== 'SQLite format 3') return fail(res, 400, 'Đây không phải tệp sao lưu (.db) của ReTech');
+    const tmp = path.join(os.tmpdir(), `retech-restore-${Date.now()}.db`);
+    fs.writeFileSync(tmp, buf);
+    try {
+      db.exec(`ATTACH DATABASE '${tmp.replace(/'/g, "''")}' AS old`);
+      try {
+        const has = n => db.prepare("SELECT 1 FROM old.sqlite_master WHERE type='table' AND name=?").get(n);
+        if (!has('users') || !has('products')) return fail(res, 400, 'Tệp sao lưu không đúng định dạng (thiếu bảng users/products)');
+        const tables = db.prepare("SELECT name FROM main.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(r => r.name).filter(has);
+        db.exec('PRAGMA foreign_keys=OFF');
+        db.exec('BEGIN');
+        try {
+          for (const t of tables) {
+            const mainCols = db.prepare(`PRAGMA main.table_info("${t}")`).all().map(c => c.name);
+            const oldCols = new Set(db.prepare(`PRAGMA old.table_info("${t}")`).all().map(c => c.name));
+            const cols = mainCols.filter(c => oldCols.has(c)).map(c => `"${c}"`).join(',');
+            db.exec(`DELETE FROM main."${t}"`);
+            db.exec(`INSERT INTO main."${t}" (${cols}) SELECT ${cols} FROM old."${t}"`);
+          }
+          db.exec('COMMIT');
+        } catch (e) { db.exec('ROLLBACK'); throw e; }
+        res.json({ ok: true, tables: tables.length });
+      } finally { db.exec('PRAGMA foreign_keys=ON'); db.exec('DETACH DATABASE old'); }
+    } finally { fs.rm(tmp, () => {}); }
   }));
 
   // ---------- Admin: chính sách ----------
