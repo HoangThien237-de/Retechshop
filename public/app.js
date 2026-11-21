@@ -474,7 +474,19 @@ async function pageAdmin(tab = 'stats') {
       <h3 style="margin-top:22px">Email thông báo</h3>
       <p class="muted">${state.config.mail ? '✔ Máy chủ đã cấu hình SMTP.' : '✖ Chưa cấu hình SMTP nên chưa gửi được email (xem README, mục Email).'} Email này nhận thông báo đơn mới, tin nhắn, thu mua, ký gửi.</p>
       ${f('notify_email', 'Email nhận thông báo của shop', 'ban@gmail.com', 'email')}
-      <div class="err" id="sErr"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn">Lưu cài đặt</button><button type="button" class="btn alt" id="testMail">Gửi email thử</button></div></form></div>`);
+      <div class="err" id="sErr"></div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn">Lưu cài đặt</button><button type="button" class="btn alt" id="testMail">Gửi email thử</button></div></form>
+      <h3 style="margin-top:28px">Sao lưu và khôi phục dữ liệu</h3>
+      <p class="muted">Tệp sao lưu chứa toàn bộ sản phẩm, ảnh, đơn hàng, tài khoản, cài đặt. Nên tải về sau mỗi lần thêm ảnh/sản phẩm. Nếu web bị mất dữ liệu (ví dụ do khởi động lại trên hosting miễn phí), hãy nạp lại tệp này.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="/api/admin/backup">⬇ Tải bản sao lưu</a><label class="btn alt" style="cursor:pointer">⬆ Khôi phục từ tệp .db<input type="file" id="restoreFile" accept=".db" hidden></label></div></div>`);
+    $('#restoreFile').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      if (!confirm('Khôi phục sẽ THAY THẾ toàn bộ dữ liệu hiện tại bằng dữ liệu trong tệp. Tiếp tục?')) { e.target.value = ''; return; }
+      try {
+        const r = await fetch('/api/admin/restore', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: f, credentials: 'same-origin' });
+        const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Khôi phục thất bại');
+        toast('Đã khôi phục dữ liệu'); setTimeout(() => location.reload(), 800);
+      } catch (er) { $('#sErr').textContent = er.message; }
+    };
     $('#sf').onsubmit = async e => {
       e.preventDefault();
       try { state.config.shop = await api('/api/admin/settings', { method: 'PUT', body: Object.fromEntries(new FormData(e.target)) }); renderShopInfo(); toast('Đã lưu cài đặt'); }
