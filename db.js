@@ -234,6 +234,30 @@ function seed() {
     ip.run(cid[p[0]], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], illustrate(p[1], p[2], p[0]), 'SN' + (100000 + i * 137));
   });
 }
+// Nếu CSDL còn trống và có tệp du-lieu-mau.db cạnh server.js (bản sao lưu đưa lên cùng mã nguồn)
+// thì nạp dữ liệu từ đó. Giúp dữ liệu quay lại khi hosting miễn phí xóa ổ đĩa.
+function loadSnapshot() {
+  const fs = require('fs'), snap = path.join(__dirname, 'du-lieu-mau.db');
+  if (!fs.existsSync(snap) || db.prepare('SELECT COUNT(*) c FROM users').get().c > 0) return;
+  try {
+    db.exec(`ATTACH DATABASE '${snap.replace(/'/g, "''")}' AS old`);
+    try {
+      const has = n => db.prepare("SELECT 1 FROM old.sqlite_master WHERE type='table' AND name=?").get(n);
+      if (!has('users') || !has('products')) return;
+      const tables = db.prepare("SELECT name FROM main.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map(r => r.name).filter(has);
+      db.exec('PRAGMA foreign_keys=OFF'); db.exec('BEGIN');
+      try {
+        for (const t of tables) {
+          const oc = new Set(db.prepare(`PRAGMA old.table_info("${t}")`).all().map(c => c.name));
+          const cols = db.prepare(`PRAGMA main.table_info("${t}")`).all().map(c => c.name).filter(c => oc.has(c)).map(c => `"${c}"`).join(',');
+          db.exec(`DELETE FROM main."${t}"`); db.exec(`INSERT INTO main."${t}" (${cols}) SELECT ${cols} FROM old."${t}"`);
+        }
+        db.exec('COMMIT'); console.log('Đã nạp dữ liệu từ du-lieu-mau.db');
+      } catch (e) { db.exec('ROLLBACK'); throw e; }
+    } finally { db.exec('PRAGMA foreign_keys=ON'); db.exec('DETACH DATABASE old'); }
+  } catch (e) { console.error('Không nạp được du-lieu-mau.db:', e.message); }
+}
+loadSnapshot();
 seed();
 
 // Ảnh minh họa do hệ thống tạo (SVG) luôn được vẽ lại theo tên/hãng/danh mục hiện tại.
